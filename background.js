@@ -4,13 +4,10 @@ function storageKey(tabId) {
   return `tab:${tabId}`;
 }
 
-function badgeText(seconds) {
-  return seconds < 60 ? `${seconds}s` : `${seconds / 60}m`;
-}
-
 function countdownText(remainingMs) {
   const r = Math.max(0, Math.ceil(remainingMs / 1000));
-  return r >= 60 ? `${Math.ceil(r / 60)}m` : `${r}s`;
+  if (r < 60) return `${r}s`;
+  return `${Math.floor(r / 60)}:${String(r % 60).padStart(2, '0')}`;
 }
 
 function isInjectableUrl(url) {
@@ -78,16 +75,23 @@ async function drawCountdownCanvas(size, text) {
   const canvas = new OffscreenCanvas(size, size);
   const ctx = canvas.getContext('2d');
   ctx.drawImage(await baseIconBitmap(), 0, 0, size, size);
-  const pillH = Math.round(size * 0.55);
+  const pillH = Math.round(size * 0.6);
   const y = size - pillH;
   ctx.fillStyle = PILL_COLOR;
   ctx.beginPath();
   ctx.roundRect(0, y, size, pillH, Math.round(size * 0.15));
   ctx.fill();
   ctx.fillStyle = '#ffffff';
-  ctx.font = `bold ${Math.round(pillH * 0.75)}px monospace`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
+  // Largest font that fits the pill; long strings like "60:00" shrink to fit.
+  const maxWidth = size * 0.94;
+  let fontSize = Math.round(pillH * 0.95);
+  do {
+    ctx.font = `bold ${fontSize}px monospace`;
+    if (ctx.measureText(text).width <= maxWidth) break;
+    fontSize--;
+  } while (fontSize > 5);
   ctx.fillText(text, size / 2, y + pillH / 2 + size * 0.03);
   return canvas;
 }
@@ -119,7 +123,7 @@ async function setReload(tabId, seconds) {
   }
   await injectTimer(tabId, seconds);
   await chrome.storage.session.set({ [storageKey(tabId)]: seconds });
-  await paintCountdown(tabId, badgeText(seconds));
+  await paintCountdown(tabId, countdownText(seconds * 1000));
 }
 
 async function clearReload(tabId) {
@@ -187,7 +191,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
       throw new Error('uninjectable');
     }
     await injectTimer(tabId, seconds);
-    await paintCountdown(tabId, badgeText(seconds));
+    await paintCountdown(tabId, countdownText(seconds * 1000));
   } catch {
     // Tab navigated somewhere we can't inject; stop monitoring it.
     await chrome.storage.session.remove(key);

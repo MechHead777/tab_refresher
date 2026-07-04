@@ -1,13 +1,13 @@
 # Tab Refresher
 
-A Manifest V3 Chrome extension that auto-reloads individual tabs at a chosen interval. The extension icon shows a live countdown (e.g. `10s` … `3s`, `2s`, `1s`; minutes granularity above 60s) for each tab.
+A Manifest V3 Chrome extension that auto-reloads individual tabs at a chosen interval. The extension icon shows a live countdown (`10s` … `2s`, `1s` below a minute, `m:ss` like `4:59` above) for each tab.
 
 Plain JavaScript, no build step, no dependencies, no telemetry.
 
 ## Features
 
 - Per-tab reload intervals: **5s, 10s, 15s, 30s, 60s, 5m, 10m, 15m, 30m, 60m**, plus **Off**
-- Live countdown on the toolbar icon showing time until the next reload (seconds below one minute, minutes above)
+- Live countdown on the toolbar icon showing time until the next reload (seconds below one minute, `m:ss` above)
 - State is cleared automatically when the tab closes
 - Reload state resets on browser restart (session-scoped)
 
