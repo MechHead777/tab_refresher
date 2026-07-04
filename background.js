@@ -78,9 +78,9 @@ function drawCountdownCanvas(size, text) {
   ctx.fillStyle = '#ffffff';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = `bold ${Math.round(size * 0.46)}px monospace`;
-  ctx.fillText(mm, size / 2, size * 0.27);
-  ctx.fillText(ss, size / 2, size * 0.75);
+  ctx.font = `bold ${Math.round(size * 0.54)}px monospace`;
+  ctx.fillText(mm, size / 2, size * 0.265);
+  ctx.fillText(ss, size / 2, size * 0.765);
   return canvas;
 }
 
