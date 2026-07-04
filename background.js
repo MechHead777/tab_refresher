@@ -1,4 +1,4 @@
-const BADGE_COLOR = '#1a73e8';
+const PILL_COLOR = '#174ea6';
 
 function storageKey(tabId) {
   return `tab:${tabId}`;
@@ -62,14 +62,51 @@ async function injectTimer(tabId, seconds) {
   });
 }
 
-async function setBadge(tabId, seconds) {
-  await chrome.action.setBadgeText({ tabId, text: badgeText(seconds) });
-  await chrome.action.setBadgeBackgroundColor({ tabId, color: BADGE_COLOR });
+// The countdown is drawn onto the icon instead of the native badge: the
+// badge renders in the system UI font, whose proportional digits make the
+// text shift around as it ticks. Drawing ourselves lets us use a monospace
+// font and exact centering.
+let iconBitmapPromise;
+function baseIconBitmap() {
+  iconBitmapPromise ??= fetch(chrome.runtime.getURL('icons/icon128.png'))
+    .then((r) => r.blob())
+    .then(createImageBitmap);
+  return iconBitmapPromise;
 }
 
-async function clearBadge(tabId) {
+async function drawCountdownCanvas(size, text) {
+  const canvas = new OffscreenCanvas(size, size);
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(await baseIconBitmap(), 0, 0, size, size);
+  const pillH = Math.round(size * 0.55);
+  const y = size - pillH;
+  ctx.fillStyle = PILL_COLOR;
+  ctx.beginPath();
+  ctx.roundRect(0, y, size, pillH, Math.round(size * 0.15));
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.font = `bold ${Math.round(pillH * 0.75)}px monospace`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, size / 2, y + pillH / 2 + size * 0.03);
+  return canvas;
+}
+
+async function paintCountdown(tabId, text) {
+  const imageData = {};
+  for (const size of [16, 32]) {
+    const canvas = await drawCountdownCanvas(size, text);
+    imageData[size] = canvas.getContext('2d').getImageData(0, 0, size, size);
+  }
+  await chrome.action.setIcon({ tabId, imageData });
+}
+
+async function resetIcon(tabId) {
   try {
-    await chrome.action.setBadgeText({ tabId, text: '' });
+    await chrome.action.setIcon({
+      tabId,
+      path: { 16: 'icons/icon16.png', 48: 'icons/icon48.png', 128: 'icons/icon128.png' },
+    });
   } catch {
     // Tab already gone.
   }
@@ -82,12 +119,12 @@ async function setReload(tabId, seconds) {
   }
   await injectTimer(tabId, seconds);
   await chrome.storage.session.set({ [storageKey(tabId)]: seconds });
-  await setBadge(tabId, seconds);
+  await paintCountdown(tabId, badgeText(seconds));
 }
 
 async function clearReload(tabId) {
   await chrome.storage.session.remove(storageKey(tabId));
-  await clearBadge(tabId);
+  await resetIcon(tabId);
   try {
     await chrome.scripting.executeScript({
       target: { tabId },
@@ -110,7 +147,7 @@ async function handleMessage(msg, sender) {
         const data = await chrome.storage.session.get(key);
         // Ignore stale ticks from a tab that was just turned off.
         if (data[key] === undefined) return { ok: false };
-        await chrome.action.setBadgeText({ tabId, text: countdownText(msg.remainingMs) });
+        await paintCountdown(tabId, countdownText(msg.remainingMs));
         return { ok: true };
       }
       case 'get': {
@@ -150,11 +187,11 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
       throw new Error('uninjectable');
     }
     await injectTimer(tabId, seconds);
-    await setBadge(tabId, seconds);
+    await paintCountdown(tabId, badgeText(seconds));
   } catch {
     // Tab navigated somewhere we can't inject; stop monitoring it.
     await chrome.storage.session.remove(key);
-    await clearBadge(tabId);
+    await resetIcon(tabId);
   }
 });
 
