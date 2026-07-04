@@ -59,47 +59,37 @@ async function injectTimer(tabId, seconds) {
   });
 }
 
-// The countdown is drawn onto the icon instead of the native badge: the
-// badge renders in the system UI font, whose proportional digits make the
-// text shift around as it ticks. Drawing ourselves lets us use a monospace
-// font and exact centering.
-let iconBitmapPromise;
-function baseIconBitmap() {
-  iconBitmapPromise ??= fetch(chrome.runtime.getURL('icons/icon128.png'))
-    .then((r) => r.blob())
-    .then(createImageBitmap);
-  return iconBitmapPromise;
-}
-
-async function drawCountdownCanvas(size, text) {
+// The countdown is drawn as the icon instead of the native badge: the badge
+// renders in the system UI font, whose proportional digits make the text
+// shift around as it ticks, and both badge and icon are clipped to a fixed
+// 16-dip square — so the countdown takes over the whole square for maximum
+// size, and the default icon returns when the timer is off.
+function drawCountdownCanvas(size, text) {
   const canvas = new OffscreenCanvas(size, size);
   const ctx = canvas.getContext('2d');
-  ctx.drawImage(await baseIconBitmap(), 0, 0, size, size);
-  const pillH = Math.round(size * 0.7);
-  const y = size - pillH;
   ctx.fillStyle = PILL_COLOR;
   ctx.beginPath();
-  ctx.roundRect(0, y, size, pillH, Math.round(size * 0.15));
+  ctx.roundRect(0, 0, size, size, Math.round(size * 0.2));
   ctx.fill();
   ctx.fillStyle = '#ffffff';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  // Wide strings like "60:00" can't fit at the base size; shrink those only.
-  const maxWidth = size * 0.94;
-  let fontSize = Math.round(pillH * 0.8);
+  // Largest font that fits; wide strings like "60:00" shrink to fit.
+  const maxWidth = size * 0.92;
+  let fontSize = Math.round(size * 0.8);
   do {
     ctx.font = `bold ${fontSize}px monospace`;
     if (ctx.measureText(text).width <= maxWidth) break;
     fontSize--;
   } while (fontSize > 5);
-  ctx.fillText(text, size / 2, y + pillH / 2 + size * 0.03);
+  ctx.fillText(text, size / 2, size / 2 + size * 0.03);
   return canvas;
 }
 
 async function paintCountdown(tabId, text) {
   const imageData = {};
   for (const size of [16, 32]) {
-    const canvas = await drawCountdownCanvas(size, text);
+    const canvas = drawCountdownCanvas(size, text);
     imageData[size] = canvas.getContext('2d').getImageData(0, 0, size, size);
   }
   await chrome.action.setIcon({ tabId, imageData });

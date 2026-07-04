@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Tab Refresher",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Auto-reload individual tabs at a chosen interval, with a live countdown badge on the toolbar icon.",
   "permissions": ["tabs", "scripting", "storage"],
   "host_permissions": ["<all_urls>"],
