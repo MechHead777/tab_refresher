@@ -1,64 +1,49 @@
 # Tab Refresher
 
-A Manifest V3 Chrome extension that auto-reloads individual tabs at a chosen interval. The extension icon shows a live countdown for each tab, as a stacked minutes-over-seconds grid (`15` over `00` for 15:00 remaining).
+Chrome extension (Manifest V3) that auto-reloads individual tabs on a timer. Each tab gets its own interval, and the toolbar icon turns into a live countdown while a timer is running.
 
-Plain JavaScript, no build step, no dependencies, no telemetry.
+Plain JavaScript — no build step, no dependencies, no telemetry.
 
 ## Features
 
-- Per-tab reload intervals: **5s, 10s, 15s, 30s, 60s, 5m, 10m, 15m, 30m, 60m**, plus **Off**
-- Live countdown on the toolbar icon showing time until the next reload: minutes on the top row, seconds below, always two zero-padded digits each
-- In-page countdown overlay in the bottom-right corner (`0:47`), in a shadow DOM with `pointer-events: none` so it can't collide with page styles or block interaction
-- State is cleared automatically when the tab closes
-- Reload state resets on browser restart (session-scoped)
+- Per-tab intervals: 5s, 10s, 15s, 30s, 60s, 5m, 10m, 15m, 30m, 60m, or off
+- Countdown on the toolbar icon: minutes on top, seconds below
+- Countdown overlay in the page's bottom-right corner (shadow DOM, `pointer-events: none`, so it never fights the page)
+- State clears when a tab closes, and resets on browser restart
 
 ## Install
 
-1. Clone or download this repository.
-2. Open `chrome://extensions` and enable **Developer mode** (top right).
-3. Click **Load unpacked** and select this directory.
+1. Clone the repo
+2. Open `chrome://extensions` and enable Developer mode
+3. Click **Load unpacked** and select this folder
 
 ## Usage
 
-Click the toolbar icon, pick an interval, and the current tab reloads on that schedule. Pick a different interval to change it, or **Off** to stop. Each tab is configured independently.
+Click the icon and pick an interval. Pick a different one to change it, or **Off** to stop. Tabs are independent of each other.
 
-Restricted pages (`chrome://` pages, the Chrome Web Store, the PDF viewer, etc.) can't be auto-reloaded; the popup shows an inline error instead.
+Pages that can't run content scripts (`chrome://`, the Web Store, the PDF viewer) can't be reloaded — the popup will tell you.
 
 ## How it works
 
-`chrome.alarms` can't fire more often than every 30 seconds, so the timer lives in the page itself:
+`chrome.alarms` won't fire more often than every 30 seconds, so the timer lives in the page instead: the service worker injects a function that arms `setTimeout(() => location.reload(), ms)`, and re-injects it from `tabs.onUpdated` after every load since the reload wipes it out.
 
-- The service worker (`background.js`) injects a small function via `chrome.scripting.executeScript` that arms a `setTimeout(() => location.reload(), ms)` in the tab. The page reloads itself — no message round-trips.
-- The reload wipes the injected script, so a `chrome.tabs.onUpdated` listener (`status: 'complete'`) re-injects the timer and re-sets the badge after every load.
-- The injected script also ticks once per second: it updates a fixed-position countdown overlay in the page corner and messages the service worker, which repaints the icon. The ticks keep the worker awake while any tab is monitored; with no timers active it idles out as usual.
-- The countdown is drawn with `OffscreenCanvas` + `chrome.action.setIcon`, replacing the toolbar icon with a full-size countdown tile while a timer runs (the default icon returns when it's off). The native badge isn't used: it renders in the system UI font, whose proportional digits (1, 5, 7…) make the text visibly shift as it ticks, and it's clipped to a small corner of the icon square. Drawing it ourselves across the whole icon — a static 2×2 grid of monospace digits, minutes over seconds — keeps every frame identically laid out and as large as Chrome allows.
-- Per-tab config lives in `chrome.storage.session` (`tabId → seconds`), which survives service-worker termination but resets with the browser. The worker keeps no in-memory state.
-- Turning a tab off injects a one-shot `clearTimeout`, since injected scripts can't be removed.
-- `chrome.tabs.onRemoved` cleans up storage when a tab closes; if a monitored tab navigates somewhere injection fails, its state and badge are dropped gracefully.
+The injected script also ticks once a second — updating the corner overlay and messaging the service worker, which redraws the icon countdown with `OffscreenCanvas`. The native badge isn't used because it renders in the system UI font, where uneven digit widths make the text wobble as it counts; drawing monospace digits across the full icon avoids that and gets bigger text anyway.
+
+Per-tab config lives in `chrome.storage.session`, so it survives service-worker shutdowns but resets with the browser. Turning a timer off injects a one-shot `clearTimeout` (injected scripts can't be removed), and `tabs.onRemoved` cleans up when a tab closes.
 
 ## Permissions
 
 | Permission | Why |
 | --- | --- |
-| `scripting` | Inject the timer function into pages |
-| `storage` | Keep per-tab intervals in `chrome.storage.session` |
-| `<all_urls>` | Re-injection after each reload happens without a user gesture, so `activeTab` can't work; also provides tab URL access for the restricted-page check (no separate `tabs` permission needed) |
+| `scripting` | Inject the timer into pages |
+| `storage` | Per-tab intervals in `chrome.storage.session` |
+| `<all_urls>` | Re-injection after a reload happens without a user gesture, so `activeTab` isn't enough. Also covers reading tab URLs — no separate `tabs` permission, so no "read your browsing history" warning |
 
-The `tabs` permission was deliberately dropped: host permissions already expose the URLs of pages the extension can inject into, and pages it can't see (`chrome://` etc.) surface as undefined URLs, which the restricted-page check treats as uninjectable. This avoids the "read your browsing history" install warning.
+## Security notes
 
-## Security
+- Control messages (`set`/`clear`/`get`) are only accepted from the popup; ticks only from a tab's injected script, identified by `sender.tab.id` rather than anything in the message. A page context can't use the worker to script other tabs.
+- Intervals are validated against the preset list, so a forged message can't arm a near-zero reload loop.
+- No `innerHTML`, no `eval`, no external requests; the injected functions are fixed code taking one validated number.
+- The only stored data is `tabId → seconds`, in session storage.
 
-Hardening applied in the service worker's message handler:
-
-- **Sender validation** — control messages (`set`/`clear`/`get`) are only accepted from extension pages (the popup), and `tick` messages only from a tab's injected script. A content-script context can't use the service worker as a proxy to inject into or force-reload other tabs.
-- **Interval allowlist** — `set` rejects any interval not in the popup's preset list, so a forged message can't arm a near-zero reload loop.
-- **Trusted tab identity** — `tick` handling uses `sender.tab.id` (set by Chrome, unforgeable) rather than anything in the message body, so one tab can't repaint another tab's icon.
-
-By construction:
-
-- No `innerHTML`, no `eval`, no remotely-loaded code, no external requests; MV3's default CSP applies. All UI text is set via `textContent`.
-- The functions injected into pages are fixed code taking a single validated number — nothing page-controlled flows into `chrome.scripting.executeScript`.
-- Web pages can't message the extension (no `externally_connectable`), and the isolated content-script world keeps page JavaScript away from the extension's timer handles.
-- Stored data is only `tabId → interval seconds` in session storage — nothing sensitive, wiped on tab close and browser exit.
-
-Known limitation, inherent to the in-page-timer design: a page can observe anything rendered into its DOM, so a hostile page could detect the countdown overlay (fingerprinting the extension), remove or spoof it, or in principle cancel the reload timer scheduled on its event loop. This only matters against pages actively targeting the extension.
+One inherent limitation: the overlay and timer live in the page, so a page could detect them, remove them, or spoof the overlay. Only matters if a site is actively targeting the extension.
