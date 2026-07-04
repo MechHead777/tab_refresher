@@ -8,6 +8,11 @@ function badgeText(seconds) {
   return seconds < 60 ? `${seconds}s` : `${seconds / 60}m`;
 }
 
+function countdownText(remainingMs) {
+  const r = Math.max(0, Math.ceil(remainingMs / 1000));
+  return r >= 60 ? `${Math.ceil(r / 60)}m` : `${r}s`;
+}
+
 function isInjectableUrl(url) {
   let parsed;
   try {
@@ -22,15 +27,31 @@ function isInjectableUrl(url) {
 }
 
 // Runs in the page: (re)arm the reload timer, replacing any existing one.
+// Also ticks once per second so the service worker can paint a live
+// countdown badge; the tick messages double as a service-worker keep-alive.
 function pageStartTimer(ms) {
   clearTimeout(window.__tabRefresherTimeoutId);
+  clearInterval(window.__tabRefresherTickerId);
+  const deadline = Date.now() + ms;
   window.__tabRefresherTimeoutId = setTimeout(() => location.reload(), ms);
+  window.__tabRefresherTickerId = setInterval(() => {
+    try {
+      chrome.runtime
+        .sendMessage({ type: 'tick', remainingMs: deadline - Date.now() })
+        .catch(() => {});
+    } catch {
+      // Extension was reloaded/removed; this context is orphaned.
+      clearInterval(window.__tabRefresherTickerId);
+    }
+  }, 1000);
 }
 
 // Runs in the page: cancel the reload timer.
 function pageCancelTimer() {
   clearTimeout(window.__tabRefresherTimeoutId);
+  clearInterval(window.__tabRefresherTickerId);
   delete window.__tabRefresherTimeoutId;
+  delete window.__tabRefresherTickerId;
 }
 
 async function injectTimer(tabId, seconds) {
@@ -78,9 +99,20 @@ async function clearReload(tabId) {
   }
 }
 
-async function handleMessage(msg) {
+async function handleMessage(msg, sender) {
   try {
     switch (msg.type) {
+      case 'tick': {
+        // Countdown tick from a page's timer script.
+        const tabId = sender?.tab?.id;
+        if (tabId === undefined) return { ok: false };
+        const key = storageKey(tabId);
+        const data = await chrome.storage.session.get(key);
+        // Ignore stale ticks from a tab that was just turned off.
+        if (data[key] === undefined) return { ok: false };
+        await chrome.action.setBadgeText({ tabId, text: countdownText(msg.remainingMs) });
+        return { ok: true };
+      }
       case 'get': {
         const key = storageKey(msg.tabId);
         const data = await chrome.storage.session.get(key);
@@ -101,7 +133,7 @@ async function handleMessage(msg) {
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  handleMessage(msg).then(sendResponse);
+  handleMessage(msg, sender).then(sendResponse);
   return true;
 });
 

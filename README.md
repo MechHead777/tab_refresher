@@ -1,13 +1,13 @@
 # Tab Refresher
 
-A Manifest V3 Chrome extension that auto-reloads individual tabs at a chosen interval. The extension icon shows a badge with the active interval (e.g. `10s`, `5m`) for each tab.
+A Manifest V3 Chrome extension that auto-reloads individual tabs at a chosen interval. The extension icon shows a live countdown badge (e.g. `10s` … `3s`, `2s`, `1s`; minutes granularity above 60s) for each tab.
 
 Plain JavaScript, no build step, no dependencies, no telemetry.
 
 ## Features
 
 - Per-tab reload intervals: **5s, 10s, 15s, 30s, 60s, 5m, 10m, 15m, 30m, 60m**, plus **Off**
-- Static badge on the toolbar icon showing the active interval for the current tab
+- Live countdown badge on the toolbar icon showing time until the next reload (seconds below one minute, minutes above)
 - State is cleared automatically when the tab closes
 - Reload state resets on browser restart (session-scoped)
 
@@ -29,6 +29,7 @@ Restricted pages (`chrome://` pages, the Chrome Web Store, the PDF viewer, etc.)
 
 - The service worker (`background.js`) injects a small function via `chrome.scripting.executeScript` that arms a `setTimeout(() => location.reload(), ms)` in the tab. The page reloads itself — no message round-trips.
 - The reload wipes the injected script, so a `chrome.tabs.onUpdated` listener (`status: 'complete'`) re-injects the timer and re-sets the badge after every load.
+- The injected script also ticks a message to the service worker once per second, which repaints the badge with the remaining time. The ticks keep the worker awake while any tab is monitored; with no timers active it idles out as usual.
 - Per-tab config lives in `chrome.storage.session` (`tabId → seconds`), which survives service-worker termination but resets with the browser. The worker keeps no in-memory state.
 - Turning a tab off injects a one-shot `clearTimeout`, since injected scripts can't be removed.
 - `chrome.tabs.onRemoved` cleans up storage when a tab closes; if a monitored tab navigates somewhere injection fails, its state and badge are dropped gracefully.
