@@ -43,3 +43,22 @@ Restricted pages (`chrome://` pages, the Chrome Web Store, the PDF viewer, etc.)
 | `scripting` | Inject the timer function into pages |
 | `storage` | Keep per-tab intervals in `chrome.storage.session` |
 | `<all_urls>` | Re-injection after each reload happens without a user gesture, so `activeTab` can't work; also provides tab URL access for the restricted-page check (no separate `tabs` permission needed) |
+
+The `tabs` permission was deliberately dropped: host permissions already expose the URLs of pages the extension can inject into, and pages it can't see (`chrome://` etc.) surface as undefined URLs, which the restricted-page check treats as uninjectable. This avoids the "read your browsing history" install warning.
+
+## Security
+
+Hardening applied in the service worker's message handler:
+
+- **Sender validation** — control messages (`set`/`clear`/`get`) are only accepted from extension pages (the popup), and `tick` messages only from a tab's injected script. A content-script context can't use the service worker as a proxy to inject into or force-reload other tabs.
+- **Interval allowlist** — `set` rejects any interval not in the popup's preset list, so a forged message can't arm a near-zero reload loop.
+- **Trusted tab identity** — `tick` handling uses `sender.tab.id` (set by Chrome, unforgeable) rather than anything in the message body, so one tab can't repaint another tab's icon.
+
+By construction:
+
+- No `innerHTML`, no `eval`, no remotely-loaded code, no external requests; MV3's default CSP applies. All UI text is set via `textContent`.
+- The functions injected into pages are fixed code taking a single validated number — nothing page-controlled flows into `chrome.scripting.executeScript`.
+- Web pages can't message the extension (no `externally_connectable`), and the isolated content-script world keeps page JavaScript away from the extension's timer handles.
+- Stored data is only `tabId → interval seconds` in session storage — nothing sensitive, wiped on tab close and browser exit.
+
+Known limitation, inherent to the in-page-timer design: a page can observe anything rendered into its DOM, so a hostile page could detect the countdown overlay (fingerprinting the extension), remove or spoof it, or in principle cancel the reload timer scheduled on its event loop. This only matters against pages actively targeting the extension.
