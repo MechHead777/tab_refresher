@@ -1,5 +1,9 @@
 const PILL_COLOR = '#174ea6';
 
+// Mirrors the popup's presets; 'set' rejects anything else so a compromised
+// context can't arm arbitrary (e.g. near-zero) reload intervals.
+const PRESET_SECONDS = [5, 10, 15, 30, 60, 300, 600, 900, 1800, 3600];
+
 function storageKey(tabId) {
   return `tab:${tabId}`;
 }
@@ -156,10 +160,17 @@ async function clearReload(tabId) {
 
 async function handleMessage(msg, sender) {
   try {
+    // Control messages may only come from extension pages (the popup);
+    // ticks may only come from a tab's injected script. This keeps content
+    // -script contexts from driving executeScript at arbitrary tabs.
+    const fromTab = sender?.tab !== undefined;
+    if (msg.type === 'tick' ? !fromTab : fromTab) {
+      return { ok: false, error: 'Unexpected sender for message type.' };
+    }
     switch (msg.type) {
       case 'tick': {
         // Countdown tick from a page's timer script.
-        const tabId = sender?.tab?.id;
+        const tabId = sender.tab.id;
         if (tabId === undefined) return { ok: false };
         const key = storageKey(tabId);
         const data = await chrome.storage.session.get(key);
@@ -174,6 +185,9 @@ async function handleMessage(msg, sender) {
         return { ok: true, seconds: data[key] ?? null };
       }
       case 'set':
+        if (!PRESET_SECONDS.includes(msg.seconds)) {
+          return { ok: false, error: 'Invalid interval.' };
+        }
         await setReload(msg.tabId, msg.seconds);
         return { ok: true };
       case 'clear':

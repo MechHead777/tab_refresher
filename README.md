@@ -40,7 +40,6 @@ Restricted pages (`chrome://` pages, the Chrome Web Store, the PDF viewer, etc.)
 
 | Permission | Why |
 | --- | --- |
-| `tabs` | Read the tab URL to detect pages that can't be injected |
 | `scripting` | Inject the timer function into pages |
 | `storage` | Keep per-tab intervals in `chrome.storage.session` |
-| `<all_urls>` | Re-injection after each reload happens without a user gesture, so `activeTab` can't work |
+| `<all_urls>` | Re-injection after each reload happens without a user gesture, so `activeTab` can't work; also provides tab URL access for the restricted-page check (no separate `tabs` permission needed) |
