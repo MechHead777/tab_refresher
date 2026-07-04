@@ -6,8 +6,9 @@ function storageKey(tabId) {
 
 function countdownText(remainingMs) {
   const r = Math.max(0, Math.ceil(remainingMs / 1000));
-  if (r < 60) return `${r}s`;
-  return `${Math.floor(r / 60)}:${String(r % 60).padStart(2, '0')}`;
+  const mm = String(Math.floor(r / 60)).padStart(2, '0');
+  const ss = String(r % 60).padStart(2, '0');
+  return `${mm}:${ss}`;
 }
 
 function isInjectableUrl(url) {
@@ -62,9 +63,12 @@ async function injectTimer(tabId, seconds) {
 // The countdown is drawn as the icon instead of the native badge: the badge
 // renders in the system UI font, whose proportional digits make the text
 // shift around as it ticks, and both badge and icon are clipped to a fixed
-// 16-dip square — so the countdown takes over the whole square for maximum
-// size, and the default icon returns when the timer is off.
+// 16-dip square — so the countdown takes over the whole square, and the
+// default icon returns when the timer is off. Layout is a static 2x2 grid:
+// minutes on the top row, seconds below, always zero-padded to two digits,
+// so every frame has four digits in identical positions.
 function drawCountdownCanvas(size, text) {
+  const [mm, ss] = text.split(':');
   const canvas = new OffscreenCanvas(size, size);
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = PILL_COLOR;
@@ -74,15 +78,9 @@ function drawCountdownCanvas(size, text) {
   ctx.fillStyle = '#ffffff';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  // Largest font that fits; wide strings like "60:00" shrink to fit.
-  const maxWidth = size * 0.92;
-  let fontSize = Math.round(size * 0.8);
-  do {
-    ctx.font = `bold ${fontSize}px monospace`;
-    if (ctx.measureText(text).width <= maxWidth) break;
-    fontSize--;
-  } while (fontSize > 5);
-  ctx.fillText(text, size / 2, size / 2 + size * 0.03);
+  ctx.font = `bold ${Math.round(size * 0.46)}px monospace`;
+  ctx.fillText(mm, size / 2, size * 0.27);
+  ctx.fillText(ss, size / 2, size * 0.75);
   return canvas;
 }
 
