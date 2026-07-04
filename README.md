@@ -8,6 +8,7 @@ Plain JavaScript, no build step, no dependencies, no telemetry.
 
 - Per-tab reload intervals: **5s, 10s, 15s, 30s, 60s, 5m, 10m, 15m, 30m, 60m**, plus **Off**
 - Live countdown on the toolbar icon showing time until the next reload: minutes on the top row, seconds below, always two zero-padded digits each
+- In-page countdown overlay in the bottom-right corner (`0:47`), in a shadow DOM with `pointer-events: none` so it can't collide with page styles or block interaction
 - State is cleared automatically when the tab closes
 - Reload state resets on browser restart (session-scoped)
 
@@ -29,7 +30,7 @@ Restricted pages (`chrome://` pages, the Chrome Web Store, the PDF viewer, etc.)
 
 - The service worker (`background.js`) injects a small function via `chrome.scripting.executeScript` that arms a `setTimeout(() => location.reload(), ms)` in the tab. The page reloads itself — no message round-trips.
 - The reload wipes the injected script, so a `chrome.tabs.onUpdated` listener (`status: 'complete'`) re-injects the timer and re-sets the badge after every load.
-- The injected script also ticks a message to the service worker once per second, which repaints the countdown. The ticks keep the worker awake while any tab is monitored; with no timers active it idles out as usual.
+- The injected script also ticks once per second: it updates a fixed-position countdown overlay in the page corner and messages the service worker, which repaints the icon. The ticks keep the worker awake while any tab is monitored; with no timers active it idles out as usual.
 - The countdown is drawn with `OffscreenCanvas` + `chrome.action.setIcon`, replacing the toolbar icon with a full-size countdown tile while a timer runs (the default icon returns when it's off). The native badge isn't used: it renders in the system UI font, whose proportional digits (1, 5, 7…) make the text visibly shift as it ticks, and it's clipped to a small corner of the icon square. Drawing it ourselves across the whole icon — a static 2×2 grid of monospace digits, minutes over seconds — keeps every frame identically laid out and as large as Chrome allows.
 - Per-tab config lives in `chrome.storage.session` (`tabId → seconds`), which survives service-worker termination but resets with the browser. The worker keeps no in-memory state.
 - Turning a tab off injects a one-shot `clearTimeout`, since injected scripts can't be removed.

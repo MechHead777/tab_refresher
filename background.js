@@ -25,14 +25,38 @@ function isInjectableUrl(url) {
 }
 
 // Runs in the page: (re)arm the reload timer, replacing any existing one.
-// Also ticks once per second so the service worker can paint a live
-// countdown badge; the tick messages double as a service-worker keep-alive.
+// Also ticks once per second to update a corner countdown overlay and to
+// let the service worker paint the icon; the tick messages double as a
+// service-worker keep-alive.
 function pageStartTimer(ms) {
   clearTimeout(window.__tabRefresherTimeoutId);
   clearInterval(window.__tabRefresherTickerId);
+  document.getElementById('__tab-refresher-overlay')?.remove();
+
   const deadline = Date.now() + ms;
   window.__tabRefresherTimeoutId = setTimeout(() => location.reload(), ms);
+
+  // Corner overlay: fixed-position shadow-DOM host so page styles can't
+  // leak in, pointer-events: none so it never blocks interaction.
+  const host = document.createElement('div');
+  host.id = '__tab-refresher-overlay';
+  host.style.cssText =
+    'position:fixed;right:12px;bottom:12px;z-index:2147483647;pointer-events:none;';
+  const label = document.createElement('span');
+  label.style.cssText =
+    'display:block;padding:4px 10px;border-radius:6px;background:rgba(0,0,0,0.65);' +
+    'color:#fff;font:600 16px/1.4 monospace;';
+  host.attachShadow({ mode: 'open' }).appendChild(label);
+  (document.body ?? document.documentElement).appendChild(host);
+
+  const render = () => {
+    const r = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+    label.textContent = `${Math.floor(r / 60)}:${String(r % 60).padStart(2, '0')}`;
+  };
+  render();
+
   window.__tabRefresherTickerId = setInterval(() => {
+    render();
     try {
       chrome.runtime
         .sendMessage({ type: 'tick', remainingMs: deadline - Date.now() })
@@ -40,6 +64,7 @@ function pageStartTimer(ms) {
     } catch {
       // Extension was reloaded/removed; this context is orphaned.
       clearInterval(window.__tabRefresherTickerId);
+      document.getElementById('__tab-refresher-overlay')?.remove();
     }
   }, 1000);
 }
@@ -50,6 +75,7 @@ function pageCancelTimer() {
   clearInterval(window.__tabRefresherTickerId);
   delete window.__tabRefresherTimeoutId;
   delete window.__tabRefresherTickerId;
+  document.getElementById('__tab-refresher-overlay')?.remove();
 }
 
 async function injectTimer(tabId, seconds) {
