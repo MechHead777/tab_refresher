@@ -75,7 +75,7 @@ async function drawCountdownCanvas(size, text) {
   const canvas = new OffscreenCanvas(size, size);
   const ctx = canvas.getContext('2d');
   ctx.drawImage(await baseIconBitmap(), 0, 0, size, size);
-  const pillH = Math.round(size * 0.55);
+  const pillH = Math.round(size * 0.7);
   const y = size - pillH;
   ctx.fillStyle = PILL_COLOR;
   ctx.beginPath();
@@ -86,7 +86,7 @@ async function drawCountdownCanvas(size, text) {
   ctx.textBaseline = 'middle';
   // Wide strings like "60:00" can't fit at the base size; shrink those only.
   const maxWidth = size * 0.94;
-  let fontSize = Math.round(pillH * 0.75);
+  let fontSize = Math.round(pillH * 0.8);
   do {
     ctx.font = `bold ${fontSize}px monospace`;
     if (ctx.measureText(text).width <= maxWidth) break;
