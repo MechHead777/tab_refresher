@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <h1>Reload every&hellip;</h1>
+  <div class="grid">
+    <button data-seconds="5">5s</button>
+    <button data-seconds="10">10s</button>
+    <button data-seconds="15">15s</button>
+    <button data-seconds="30">30s</button>
+    <button data-seconds="60">60s</button>
+    <button data-seconds="300">5m</button>
+    <button data-seconds="600">10m</button>
+    <button data-seconds="900">15m</button>
+    <button data-seconds="1800">30m</button>
+    <button data-seconds="3600">60m</button>
+  </div>
+  <button id="off">Off</button>
+  <p id="error" hidden></p>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
